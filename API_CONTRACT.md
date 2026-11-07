@@ -1,5 +1,7 @@
 # RUAYRUAY payment API — implemented, setup gated
 
+Current default is manual fulfillment without R2. DELIVERY_MODE defaults to manual; only DB and the two secrets are required, plus the existing release gate. Run migration 0003 after 0001/0002. POST /api/orders additionally requires contact:{method:"email"|"line",value:string}. Contact is private to the owning customer/admin. QR/receipts use rr_small_files in D1, final image cap 900 KB. Client resizes images from <=10 MB before sending. Order responses include deliveryMode, contact and fulfillment(sentAt/note). POST /api/admin/orders/:id/fulfill requires paid status, sentConfirmed:true and note. It records actual manual sending and does not send any message. Manual orders reject download issuance; admin original upload is hidden. R2/automatic-download requirements below apply only to DELIVERY_MODE=automatic.
+
 The Pages Function `functions/api/[[path]].js` implements these routes. Runtime bindings: private R2 `FILES`, D1 `DB`, secrets `ADMIN_SECRET`, `SESSION_SECRET`, and explicit gate `LIVE_CHECKOUT_ENABLED`. The persisted `checkout_enabled` flag also must be true. Both gates default closed. No secret or full-resolution original is committed.
 
 Customer:

@@ -6,8 +6,8 @@ import { onRequest } from '../functions/api/[[path]].js';
 
 // SQLite adapter exercises the actual SQL used against D1, including transaction rollback.
 class DB {
- constructor(){this.sql=new DatabaseSync(':memory:');this.sql.exec(readFileSync(new URL('../migrations/0001_commerce.sql',import.meta.url),'utf8'));}
- prepare(sql){const db=this;return {values:[],bind(...values){this.values=values;return this},async first(){return db.sql.prepare(sql).get(...this.values)||null},async all(){return {results:db.sql.prepare(sql).all(...this.values)}},async run(){const r=db.sql.prepare(sql).run(...this.values);return {meta:{changes:Number(r.changes)}}}}}
+ constructor(){this.sql=new DatabaseSync(':memory:');this.sql.exec(readFileSync(new URL('../migrations/0001_commerce.sql',import.meta.url),'utf8'));this.sql.exec(readFileSync(new URL('../migrations/0003_manual_delivery.sql',import.meta.url),'utf8'));}
+ prepare(sql){const db=this;return {values:[],bind(...values){this.values=values.map(v=>v instanceof ArrayBuffer?new Uint8Array(v):v);return this},async first(){return db.sql.prepare(sql).get(...this.values)||null},async all(){return {results:db.sql.prepare(sql).all(...this.values)}},async run(){const r=db.sql.prepare(sql).run(...this.values);return {meta:{changes:Number(r.changes)}}}}}
  async batch(statements){this.sql.exec('BEGIN');try{const result=[];for(const st of statements)result.push(await st.run());this.sql.exec('COMMIT');return result}catch(e){this.sql.exec('ROLLBACK');throw e}}
 }
 class Bucket {
@@ -19,7 +19,7 @@ class Bucket {
 }
 function image(extra=0){return new Uint8Array([255,216,255,224,0,4,0,0,255,192,0,11,8,15,0,8,112,1,1,17,0,extra,255,217])}
 async function setup(enabled=true){
- const env={DB:new DB(),FILES:new Bucket(),SESSION_SECRET:'session-secret-for-tests-only-000000000000',ADMIN_SECRET:'admin-secret-for-tests-only-00000000000000',LIVE_CHECKOUT_ENABLED:enabled?'true':'false'};
+ const env={DELIVERY_MODE:'automatic',DB:new DB(),FILES:new Bucket(),SESSION_SECRET:'session-secret-for-tests-only-000000000000',ADMIN_SECRET:'admin-secret-for-tests-only-00000000000000',LIVE_CHECKOUT_ENABLED:enabled?'true':'false'};
  await env.FILES.put('original-a',image(),{httpMetadata:{contentType:'image/jpeg'}});await env.FILES.put('original-b',image(1));await env.FILES.put('qr',image());
  await env.DB.prepare('INSERT INTO rr_products(id,title,price_satang,original_key,ready) VALUES (?,?,?,?,?)').bind('RR-001','ภาพหนึ่ง',900,'original-a',1).run();
  await env.DB.prepare('INSERT INTO rr_products(id,title,price_satang,original_key,ready) VALUES (?,?,?,?,?)').bind('RR-002','ภาพสอง',900,'original-b',1).run();
@@ -125,4 +125,35 @@ test('owner can test end to end while checkout remains closed for public custome
 test('oversized receipts, invalid JSON shape and premature approval do not alter state',async()=>{
  const s=await setup();const o=await s.order();const large=new Uint8Array(5*1024*1024+1);assert.equal((await s.receipt(o,large)).status,413);
  assert.equal((await s.owner.call('orders',{method:'POST',json:null})).status,400);assert.equal((await s.owner.call('orders/'+o.id)).data.status,'pending');
+});
+test('manual delivery works without R2, saves private contact, and requires paid status before recording delivery',async()=>{
+ const s=await setup();delete s.env.FILES;delete s.env.DELIVERY_MODE;
+ assert.equal((await s.staff.call('admin/payment-qr',{method:'PUT',body:image(30)})).status,200);
+ const requestId=crypto.randomUUID();const body={productIds:['RR-001'],requestId,contact:{method:'email',value:'buyer@example.com'}};
+ const created=await s.owner.call('orders',{method:'POST',json:body});assert.equal(created.status,201);const o=created.data;
+ assert.equal(o.deliveryMode,'manual');assert.equal(o.contact.value,'buyer@example.com');
+ assert.equal((await s.owner.call('orders/'+o.id+'/qr')).status,200);
+ assert.equal((await s.staff.call('admin/orders/'+o.id+'/fulfill',{method:'POST',json:{sentConfirmed:true,note:'sent via email'}})).status,409);
+ const receipt=await s.receipt(o,image(31));assert.equal(receipt.status,200);assert.equal((await s.staff.call('admin/orders/'+o.id+'/receipt')).status,200);
+ assert.equal((await s.approve(o,'BANK-MANUAL-001')).status,200);
+ assert.equal((await s.owner.call('orders/'+o.id+'/downloads',{method:'POST',json:{productId:'RR-001'}})).status,409);
+ assert.equal((await s.owner.call('admin/orders/'+o.id+'/fulfill',{method:'POST',json:{sentConfirmed:true,note:'sent via email'}})).status,401);
+ assert.equal((await s.staff.call('admin/orders/'+o.id+'/fulfill',{method:'POST',json:{sentConfirmed:false,note:'sent via email'}})).status,400);
+ assert.equal((await s.staff.call('admin/orders/'+o.id+'/fulfill',{method:'POST',json:{sentConfirmed:true,note:'sent via email'}})).status,200);
+ const view=(await s.owner.call('orders/'+o.id)).data;assert.equal(view.status,'paid');assert.equal(view.fulfillment.note,'sent via email');assert.ok(view.fulfillment.sentAt);
+ assert.equal((await s.client('192.0.2.99').call('orders/'+o.id)).status,401);
+ assert.equal((await s.owner.call('orders',{method:'POST',json:body})).data.id,o.id);
+ assert.equal((await s.owner.call('orders',{method:'POST',json:{...body,contact:{method:'email',value:'different@example.com'}}})).status,409);
+ assert.equal(s.env.DB.sql.prepare('SELECT COUNT(*) AS n FROM rr_small_files').get().n,2);
+});
+test('manual delivery rejects missing or invalid contact and large receipts; accepts LINE ID and catalog without originals',async()=>{
+ const s=await setup();delete s.env.FILES;s.env.DELIVERY_MODE='manual';s.env.DB.sql.prepare('UPDATE rr_products SET original_key=NULL,ready=0').run();
+ await s.staff.call('admin/payment-qr',{method:'PUT',body:image(40)});
+ const requestId=crypto.randomUUID(),base={productIds:['RR-002'],requestId};
+ assert.equal((await s.owner.call('orders',{method:'POST',json:base})).status,400);
+ assert.equal((await s.owner.call('orders',{method:'POST',json:{...base,contact:{method:'email',value:'not-an-email'}}})).status,400);
+ const order=await s.order(['RR-002'],requestId,{call:(path,options)=>s.owner.call(path,{...options,json:{...options.json,contact:{method:'line',value:'buyer.id'}}})});assert.equal(order.contact.method,'line');
+ assert.equal((await s.receipt(order,new Uint8Array(900*1024+1))).status,413);
+ assert.equal((await s.staff.call('admin/products/RR-001/original',{method:'PUT',body:image()})).status,409);
+ assert.equal((await s.staff.call('admin/settings',{method:'POST',json:{enabled:true,qrRecipientVerified:true,fulfillmentTested:true}})).status,200);
 });

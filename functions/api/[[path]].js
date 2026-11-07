@@ -1,5 +1,16 @@
 const MAX_RECEIPT = 5 * 1024 * 1024;
 const MAX_ORIGINAL = 20 * 1024 * 1024;
+const SMALL_FILE_LIMIT = 900 * 1024;
+const manualDelivery = env => env.DELIVERY_MODE !== 'automatic';
+function files(env) {
+ if(!manualDelivery(env))return env.FILES;
+ return {
+  async put(key,bytes,options={}) {if(bytes.byteLength>SMALL_FILE_LIMIT)fail(413,'รูปหลักฐานหรือ QR ต้องไม่เกิน 900 KB');await env.DB.prepare('INSERT INTO rr_small_files(key,mime,size_bytes,data) VALUES (?,?,?,?)').bind(key,options.httpMetadata?.contentType||'image/jpeg',bytes.byteLength,bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength)).run()},
+  async get(key) {const row=await env.DB.prepare('SELECT mime,size_bytes,data FROM rr_small_files WHERE key=?').bind(key).first();return row?{body:new Uint8Array(row.data),size:row.size_bytes,httpMetadata:{contentType:row.mime}}:null},
+  async head(key) {return env.DB.prepare('SELECT size_bytes AS size FROM rr_small_files WHERE key=?').bind(key).first()},
+  async delete(key) {await env.DB.prepare('DELETE FROM rr_small_files WHERE key=?').bind(key).run()}
+ };
+}
 const encoder = new TextEncoder();
 const now = () => Date.now();
 const uid = () => crypto.randomUUID();
@@ -26,7 +37,7 @@ async function readSession(request,env,role) {
 }
 function sessionHeader(role,value,age) { return (role==='admin'?'__Host-rr_admin':role==='test'?'__Host-rr_test':'__Host-rr_guest')+'='+value+'; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age='+age; }
 function credentialsReady(env) { return typeof env.SESSION_SECRET==='string'&&env.SESSION_SECRET.length>=32&&typeof env.ADMIN_SECRET==='string'&&env.ADMIN_SECRET.length>=32; }
-function requireSetup(env) { if(!env.DB||!env.FILES||!credentialsReady(env))fail(503,'ร้านกำลังตั้งค่าระบบรับเงิน กรุณาลองใหม่ภายหลัง'); }
+function requireSetup(env) { if(!env.DB||(!manualDelivery(env)&&!env.FILES)||!credentialsReady(env))fail(503,'ร้านกำลังตั้งค่าระบบรับเงิน กรุณาลองใหม่ภายหลัง'); }
 async function settings(env) { const rows=await env.DB.prepare('SELECT key,value FROM rr_settings').all();return Object.fromEntries(rows.results.map(x=>[x.key,x.value])); }
 async function live(env) { const s=await settings(env);return { enabled:env.LIVE_CHECKOUT_ENABLED==='true'&&s.checkout_enabled==='true'&&!!s.payment_qr_key, settings:s }; }
 async function checkoutAvailability(env,request) { const l=await live(env);const isTest=!!(request&&await readSession(request,env,'admin')&&await readSession(request,env,'test'));return {...l,isTest,enabled:l.enabled||isTest&&!!l.settings.payment_qr_key}; }
@@ -65,9 +76,18 @@ async function guest(request,env,responseHeaders,create=false) {
 async function admin(request,env) { if(!await readSession(request,env,'admin'))fail(401,'กรุณาเข้าสู่ระบบผู้ดูแล'); }
 async function ownedOrder(request,env,id,headers) { const owner=await guest(request,env,headers);const order=await env.DB.prepare('SELECT * FROM rr_orders WHERE id=? AND owner_hash=?').bind(id,owner).first();if(!order)fail(404,'ไม่พบคำสั่งซื้อ');return order; }
 function safeOrder(order,items) { return {id:order.id,isTest:!!order.is_test,totalSatang:order.total_satang,status:order.status,createdAt:order.created_at,expiresAt:order.expires_at,hasReceipt:!!order.receipt_id,rejectionReason:order.rejection_reason||'',items:items.map(x=>({id:x.product_id,title:x.title,priceSatang:x.unit_price_satang}))}; }
+async function orderView(env,order,items) {
+ const result=safeOrder(order,items);result.deliveryMode=items.every(x=>x.original_key==='manual')?'manual':'automatic';
+ if(result.deliveryMode==='manual'){result.contact=await env.DB.prepare('SELECT method,value FROM rr_contacts WHERE order_id=?').bind(order.id).first();result.fulfillment=await env.DB.prepare('SELECT sent_at AS sentAt,note FROM rr_fulfillments WHERE order_id=?').bind(order.id).first()}
+ return result;
+}
+function contactDetails(b) {
+ const c=b.contact;if(!c||!['email','line'].includes(c.method)||typeof c.value!=='string')fail(400,'กรุณาระบุอีเมลหรือ LINE ID สำหรับรับไฟล์');
+ const value=c.value.trim();if(value.length>254||/[\r\n\x00-\x1f]/.test(value)||(c.method==='email'?!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value):!/^@?[A-Za-z0-9._-]{3,100}$/.test(value)))fail(400,'กรุณาตรวจอีเมลหรือ LINE ID ให้ถูกต้อง');return {method:c.method,value};
+}
 async function orderItems(env,id) { return (await env.DB.prepare('SELECT * FROM rr_order_items WHERE order_id=? ORDER BY product_id').bind(id).all()).results; }
 async function fileResponse(env,key,downloadName) {
- const object=await env.FILES.get(key);if(!object)fail(404,'ไม่พบไฟล์ กรุณาติดต่อร้าน');
+ const object=await files(env).get(key);if(!object)fail(404,'ไม่พบไฟล์ กรุณาติดต่อร้าน');
  return new Response(object.body,{headers:{'Content-Type':object.httpMetadata?.contentType||'application/octet-stream','Content-Disposition':(downloadName?'attachment; filename="'+downloadName+'"':'inline'),'Content-Length':String(object.size)}});
 }
 async function dispatch(request,env,headers) {
@@ -75,8 +95,8 @@ async function dispatch(request,env,headers) {
  if(!['GET','POST','PUT'].includes(method))fail(405,'ไม่รองรับวิธีเรียกนี้');
  if(method!=='GET'&&request.headers.get('Origin')!==url.origin)fail(403,'กรุณาทำรายการจากเว็บไซต์ร้านเท่านั้น');
  if(path==='config'&&method==='GET') {
-  if(!env.DB||!env.FILES||!credentialsReady(env))return json({enabled:false,mode:'setup',message:'ร้านยังไม่เปิดรับชำระเงินจริง'});
-  try{const l=await checkoutAvailability(env,request);return json({enabled:l.enabled,mode:l.isTest?'owner-test':l.enabled?'manual':'closed',recipient:l.enabled?l.settings.payment_recipient:undefined,message:l.isTest?'ทดสอบส่วนตัวของเจ้าของร้าน ยังไม่เปิดขายต่อสาธารณะ':l.enabled?'ร้านตรวจเงินเข้าด้วยตนเองก่อนส่งไฟล์':'ร้านยังไม่เปิดรับชำระเงินจริง'})}catch{return json({enabled:false,mode:'setup',message:'ร้านกำลังเตรียมระบบรับเงิน'})}
+  if(!env.DB||(!manualDelivery(env)&&!env.FILES)||!credentialsReady(env))return json({enabled:false,mode:'setup',deliveryMode:manualDelivery(env)?'manual':'automatic',message:'ร้านยังไม่เปิดรับชำระเงินจริง'});
+  try{const l=await checkoutAvailability(env,request);return json({enabled:l.enabled,deliveryMode:manualDelivery(env)?'manual':'automatic',mode:l.isTest?'owner-test':l.enabled?'manual':'closed',recipient:l.enabled?l.settings.payment_recipient:undefined,message:l.isTest?'ทดสอบส่วนตัวของเจ้าของร้าน ยังไม่เปิดขายต่อสาธารณะ':l.enabled?'ร้านตรวจเงินเข้าด้วยตนเองก่อนส่งไฟล์':'ร้านยังไม่เปิดรับชำระเงินจริง'})}catch{return json({enabled:false,mode:'setup',deliveryMode:manualDelivery(env)?'manual':'automatic',message:'ร้านกำลังเตรียมระบบรับเงิน'})}
  }
  requireSetup(env);
  if(path==='admin/login'&&method==='POST') {
@@ -88,18 +108,19 @@ async function dispatch(request,env,headers) {
   await admin(request,env);await limit(request,env,'admin',120);
   if(path==='admin/logout'&&method==='POST'){headers.push(sessionHeader('admin','',0),sessionHeader('test','',0));return json({ok:true})}
   if(path==='admin/test-checkout'&&method==='POST'){const b=await bodyJson(request);headers.push(sessionHeader('test',b.enabled?await signedCookie(env,'test','owner',1800):'',b.enabled?1800:0));return json({ok:true})}
-  if(path==='admin/status'&&method==='GET') {const l=await live(env);const rows=await env.DB.prepare('SELECT id,title,price_satang,ready FROM rr_products ORDER BY id').all();return json({enabled:l.enabled,environmentAllowsLive:env.LIVE_CHECKOUT_ENABLED==='true',hasQr:!!l.settings.payment_qr_key,recipient:l.settings.payment_recipient,products:rows.results})}
+  if(path==='admin/status'&&method==='GET') {const l=await live(env);const rows=await env.DB.prepare('SELECT id,title,price_satang,ready FROM rr_products ORDER BY id').all();return json({enabled:l.enabled,deliveryMode:manualDelivery(env)?'manual':'automatic',environmentAllowsLive:env.LIVE_CHECKOUT_ENABLED==='true',hasQr:!!l.settings.payment_qr_key,recipient:l.settings.payment_recipient,products:rows.results})}
   if(path==='admin/orders'&&method==='GET') {
    const status=url.searchParams.get('status')||'review';if(!['review','pending','paid','rejected','refunded'].includes(status))fail(400,'สถานะไม่ถูกต้อง');
-   const rows=await env.DB.prepare('SELECT id,total_satang,status,created_at,receipt_id,is_test FROM rr_orders WHERE status=? ORDER BY created_at DESC LIMIT 100').bind(status).all();return json({orders:rows.results});
+   const rows=await env.DB.prepare('SELECT o.id,o.total_satang,o.status,o.created_at,o.receipt_id,o.is_test,f.sent_at FROM rr_orders o LEFT JOIN rr_fulfillments f ON f.order_id=o.id WHERE o.status=? ORDER BY o.created_at DESC LIMIT 100').bind(status).all();return json({orders:rows.results});
   }
   if(path==='admin/payment-qr'&&method==='PUT') {
-   const bytes=await boundedBody(request,3*1024*1024);const mime=imageType(bytes);const key='payment-qr/'+uid();
-   await env.FILES.put(key,bytes,{httpMetadata:{contentType:mime}});await env.DB.prepare('INSERT INTO rr_settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').bind('payment_qr_key',key).run();await audit(env,'qr_uploaded',null);return json({ok:true});
+   const bytes=await boundedBody(request,manualDelivery(env)?SMALL_FILE_LIMIT:3*1024*1024);const mime=imageType(bytes);const key='payment-qr/'+uid();
+   const old=await settings(env);await files(env).put(key,bytes,{httpMetadata:{contentType:mime}});await env.DB.prepare('INSERT INTO rr_settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').bind('payment_qr_key',key).run();if(old.payment_qr_key&&manualDelivery(env))await files(env).delete(old.payment_qr_key);await audit(env,'qr_uploaded',null);return json({ok:true});
   }
   if(path==='admin/payment-qr'&&method==='GET'){const s=await settings(env);if(!s.payment_qr_key)fail(404,'ยังไม่มี QR');return fileResponse(env,s.payment_qr_key)}
   const original=path.match(/^admin\/products\/([^/]+)\/original$/);
   if(original&&method==='PUT') {
+   if(manualDelivery(env))fail(409,'โหมดส่งเอง เก็บต้นฉบับใน Drive เดิม ไม่ต้องอัปโหลดที่นี่');
    const id=original[1];if(!validId(id))fail(400,'รหัสสินค้าไม่ถูกต้อง');const p=await env.DB.prepare('SELECT id FROM rr_products WHERE id=?').bind(id).first();if(!p)fail(404,'ไม่พบสินค้า');
    const bytes=await boundedBody(request,MAX_ORIGINAL);if(imageType(bytes)!=='image/jpeg')fail(415,'ต้นฉบับชุดนี้ต้องเป็น JPG');const size=jpegSize(bytes);if(size?.width!==2160||size?.height!==3840)fail(400,'ต้นฉบับต้องมีขนาด 2160×3840 พิกเซล');
    const key='originals/'+id+'/'+uid()+'.jpg';await env.FILES.put(key,bytes,{httpMetadata:{contentType:'image/jpeg'}});
@@ -107,13 +128,19 @@ async function dispatch(request,env,headers) {
   }
   if(path==='admin/settings'&&method==='POST') {
    const b=await bodyJson(request);if(typeof b.enabled!=='boolean')fail(400,'สถานะไม่ถูกต้อง');const s=await settings(env);
-   if(b.enabled){if(env.LIVE_CHECKOUT_ENABLED!=='true')fail(409,'ต้องผ่านการทดสอบและเปิด LIVE_CHECKOUT_ENABLED ในการตั้งค่าก่อน');if(!s.payment_qr_key||b.qrRecipientVerified!==true||b.fulfillmentTested!==true)fail(409,'ต้องตรวจชื่อผู้รับ QR และทดสอบส่งไฟล์ก่อน');const count=await env.DB.prepare('SELECT COUNT(*) AS n FROM rr_products WHERE ready=1').first();if(!count.n)fail(409,'ยังไม่มีต้นฉบับพร้อมส่ง');}
+   if(b.enabled){if(env.LIVE_CHECKOUT_ENABLED!=='true')fail(409,'ต้องผ่านการทดสอบและเปิด LIVE_CHECKOUT_ENABLED ในการตั้งค่าก่อน');if(!s.payment_qr_key||b.qrRecipientVerified!==true||b.fulfillmentTested!==true)fail(409,'ต้องตรวจชื่อผู้รับ QR และทดสอบส่งไฟล์ก่อน');const count=await env.DB.prepare('SELECT COUNT(*) AS n FROM rr_products'+(manualDelivery(env)?'':' WHERE ready=1')).first();if(!count.n)fail(409,'ยังไม่มีสินค้าพร้อมส่ง');}
    await env.DB.prepare('UPDATE rr_settings SET value=? WHERE key=?').bind(String(b.enabled),'checkout_enabled').run();await audit(env,'checkout_'+(b.enabled?'enabled':'disabled'),null);return json({ok:true,enabled:b.enabled});
   }
-  const match=path.match(/^admin\/orders\/([a-f0-9-]+)(?:\/(receipt|approve|reject|refund))?$/);
+  const match=path.match(/^admin\/orders\/([a-f0-9-]+)(?:\/(receipt|approve|reject|refund|fulfill))?$/);
   if(match) {
    const [,id,action]=match;const order=await env.DB.prepare('SELECT * FROM rr_orders WHERE id=?').bind(id).first();if(!order)fail(404,'ไม่พบคำสั่งซื้อ');
-   if(!action&&method==='GET'){const payment=await env.DB.prepare('SELECT transaction_ref,amount_satang,transferred_at,approved_at FROM rr_payments WHERE order_id=?').bind(id).first();return json({...safeOrder(order,await orderItems(env,id)),receiptId:order.receipt_id,payment})}
+   if(!action&&method==='GET'){const payment=await env.DB.prepare('SELECT transaction_ref,amount_satang,transferred_at,approved_at FROM rr_payments WHERE order_id=?').bind(id).first();return json({...await orderView(env,order,await orderItems(env,id)),receiptId:order.receipt_id,payment})}
+   if(action==='fulfill'&&method==='POST') {
+    const b=await bodyJson(request);if(order.status!=='paid')fail(409,'ต้องตรวจเงินเข้าก่อนบันทึกส่งไฟล์');if(b.sentConfirmed!==true||typeof b.note!=='string'||b.note.trim().length<3||b.note.length>300)fail(400,'ระบุช่องทางส่งและยืนยันว่าได้ส่งไฟล์แล้ว');
+    const contact=await env.DB.prepare('SELECT method,value FROM rr_contacts WHERE order_id=?').bind(id).first();if(!contact)fail(409,'รายการนี้ไม่ใช่การส่งเอง');
+    await env.DB.batch([env.DB.prepare('INSERT OR IGNORE INTO rr_fulfillments(order_id,sent_at,note) SELECT id,?,? FROM rr_orders WHERE id=? AND status=?').bind(now(),b.note.trim(),id,'paid'),env.DB.prepare('INSERT INTO rr_audit(id,action,order_id,detail,created_at) SELECT ?,?,?,?,? WHERE EXISTS(SELECT 1 FROM rr_fulfillments WHERE order_id=?)').bind(uid(),'manual_delivery_recorded',id,'owner confirms file sent',now(),id)]);
+    const sent=await env.DB.prepare('SELECT sent_at AS sentAt,note FROM rr_fulfillments WHERE order_id=?').bind(id).first();if(!sent)fail(409,'สถานะรายการเปลี่ยนแล้ว');return json({ok:true,fulfillment:sent});
+   }
    if(action==='receipt'&&method==='GET'){const receipt=await env.DB.prepare('SELECT object_key FROM rr_receipts WHERE id=? AND order_id=?').bind(order.receipt_id,id).first();if(!receipt)fail(404,'ยังไม่มีหลักฐาน');return fileResponse(env,receipt.object_key)}
    if(action==='approve'&&method==='POST') {
     const b=await bodyJson(request);const ref=typeof b.transactionRef==='string'?b.transactionRef.trim().replace(/\s/g,'').toUpperCase():'';
@@ -142,33 +169,35 @@ async function dispatch(request,env,headers) {
   const availability=await requireLive(env,request);await limit(request,env,'new-order',12);const owner=await guest(request,env,headers,true);const b=await bodyJson(request);
   if(!Array.isArray(b.productIds)||b.productIds.length<1||b.productIds.length>50||b.productIds.some(id=>typeof id!=='string'||!validId(id)))fail(400,'รายการสินค้าไม่ถูกต้อง');
   if(typeof b.requestId!=='string'||!/^[-a-f0-9]{36}$/.test(b.requestId))fail(400,'รหัสคำขอไม่ถูกต้อง');
+  const contact=manualDelivery(env)?contactDetails(b):null;
   const ids=[...new Set(b.productIds)].sort();const previous=await env.DB.prepare('SELECT * FROM rr_orders WHERE owner_hash=? AND request_id=?').bind(owner,b.requestId).first();
-  if(previous){const its=await orderItems(env,previous.id);if(JSON.stringify(its.map(x=>x.product_id))!==JSON.stringify(ids))fail(409,'คำขอเดิมมีสินค้าไม่ตรงกัน');return json(safeOrder(previous,its))}
-  const products=(await env.DB.prepare('SELECT * FROM rr_products WHERE ready=1 AND original_key IS NOT NULL AND id IN ('+ids.map(()=>'?').join(',')+') ORDER BY id').bind(...ids).all()).results;
+  if(previous){const its=await orderItems(env,previous.id);if(JSON.stringify(its.map(x=>x.product_id))!==JSON.stringify(ids))fail(409,'คำขอเดิมมีสินค้าไม่ตรงกัน');const view=await orderView(env,previous,its);if(contact&&JSON.stringify(contact)!==JSON.stringify(view.contact))fail(409,'ช่องทางรับไฟล์ต่างจากรายการเดิม กรุณาสร้างรายการใหม่');return json(view)}
+  const products=(await env.DB.prepare('SELECT * FROM rr_products WHERE '+(manualDelivery(env)?'':'ready=1 AND original_key IS NOT NULL AND ')+'id IN ('+ids.map(()=>'?').join(',')+') ORDER BY id').bind(...ids).all()).results;
   if(products.length!==ids.length)fail(409,'บางภาพยังไม่พร้อมส่ง กรุณาเลือกภาพอื่น');
-  for(const p of products)if(!await env.FILES.head(p.original_key))fail(503,'ไฟล์สินค้าบางภาพยังไม่พร้อม กรุณาลองใหม่ภายหลัง');
+  if(!manualDelivery(env))for(const p of products)if(!await env.FILES.head(p.original_key))fail(503,'ไฟล์สินค้าบางภาพยังไม่พร้อม กรุณาลองใหม่ภายหลัง');
   const id=uid(),time=now(),total=products.reduce((sum,p)=>sum+p.price_satang,0);const order={id,owner_hash:owner,total_satang:total,status:'pending',created_at:time,expires_at:time+86400000,is_test:availability.isTest?1:0};
-  try{await env.DB.batch([env.DB.prepare('INSERT INTO rr_orders(id,owner_hash,request_id,total_satang,status,created_at,expires_at,is_test) VALUES (?,?,?,?,?,?,?,?)').bind(id,owner,b.requestId,total,'pending',time,order.expires_at,order.is_test),...products.map(p=>env.DB.prepare('INSERT INTO rr_order_items(order_id,product_id,title,unit_price_satang,original_key) VALUES (?,?,?,?,?)').bind(id,p.id,p.title,p.price_satang,p.original_key))])}catch{const previous=await env.DB.prepare('SELECT * FROM rr_orders WHERE owner_hash=? AND request_id=?').bind(owner,b.requestId).first();if(previous){const its=await orderItems(env,previous.id);if(JSON.stringify(its.map(x=>x.product_id))===JSON.stringify(ids))return json(safeOrder(previous,its))}fail(409,'กรุณาลองสร้างคำสั่งซื้อใหม่')}
-  return json(safeOrder(order,await orderItems(env,id)),201);
+  try{await env.DB.batch([env.DB.prepare('INSERT INTO rr_orders(id,owner_hash,request_id,total_satang,status,created_at,expires_at,is_test) VALUES (?,?,?,?,?,?,?,?)').bind(id,owner,b.requestId,total,'pending',time,order.expires_at,order.is_test),...products.map(p=>env.DB.prepare('INSERT INTO rr_order_items(order_id,product_id,title,unit_price_satang,original_key) VALUES (?,?,?,?,?)').bind(id,p.id,p.title,p.price_satang,manualDelivery(env)?'manual':p.original_key)),...(contact?[env.DB.prepare('INSERT INTO rr_contacts(order_id,method,value) VALUES (?,?,?)').bind(id,contact.method,contact.value)]:[])])}catch{const previous=await env.DB.prepare('SELECT * FROM rr_orders WHERE owner_hash=? AND request_id=?').bind(owner,b.requestId).first();if(previous){const its=await orderItems(env,previous.id);if(JSON.stringify(its.map(x=>x.product_id))===JSON.stringify(ids)){const view=await orderView(env,previous,its);if(!contact||JSON.stringify(contact)===JSON.stringify(view.contact))return json(view)}}fail(409,'กรุณาลองสร้างคำสั่งซื้อใหม่')}
+  return json(await orderView(env,order,await orderItems(env,id)),201);
  }
  const match=path.match(/^orders\/([a-f0-9-]+)(?:\/(receipt|qr|downloads))?$/);
  if(match) {
   const [,id,action]=match;const order=await ownedOrder(request,env,id,headers);
-  if(!action&&method==='GET')return json(safeOrder(order,await orderItems(env,id)));
+  if(!action&&method==='GET')return json(await orderView(env,order,await orderItems(env,id)));
   if(action==='qr'&&method==='GET'){const l=await requireLive(env,request);if(!['pending','review','rejected'].includes(order.status)||order.expires_at<=now())fail(409,'คำสั่งซื้อนี้ไม่รับชำระเพิ่ม');return fileResponse(env,l.settings.payment_qr_key)}
   if(action==='receipt'&&method==='POST') {
    await limit(request,env,'receipt',10);if(!['pending','rejected','review'].includes(order.status))fail(409,'รายการนี้ไม่รับหลักฐานเพิ่ม');
    if(order.expires_at<=now()&&order.status!=='review')fail(409,'คำสั่งซื้อหมดอายุ กรุณาติดต่อร้านหากโอนแล้ว');
-   const bytes=await boundedBody(request,MAX_RECEIPT),mime=imageType(bytes),digest=await hash(bytes);
+   const bytes=await boundedBody(request,manualDelivery(env)?SMALL_FILE_LIMIT:MAX_RECEIPT),mime=imageType(bytes),digest=await hash(bytes);
    const previous=await env.DB.prepare('SELECT id,order_id FROM rr_receipts WHERE sha256=?').bind(digest).first();if(previous){if(previous.order_id===id&&previous.id===order.receipt_id)return json({ok:true,status:order.status});fail(409,'หลักฐานนี้ถูกส่งแล้ว กรุณาตรวจสอบรายการเดิม')}
-   const receiptId=uid(),key='receipts/'+id+'/'+receiptId;await env.FILES.put(key,bytes,{httpMetadata:{contentType:mime}});
+   const receiptId=uid(),key='receipts/'+id+'/'+receiptId;await files(env).put(key,bytes,{httpMetadata:{contentType:mime}});
    try {const r=await env.DB.batch([
     env.DB.prepare('INSERT INTO rr_receipts(id,order_id,object_key,sha256,mime,size_bytes,created_at) SELECT ?,id,?,?,?,?,? FROM rr_orders WHERE id=? AND status IN (?,?,?) AND COALESCE(receipt_id,?)=?').bind(receiptId,key,digest,mime,bytes.length,now(),id,'pending','review','rejected','',order.receipt_id||''),
     env.DB.prepare('UPDATE rr_orders SET receipt_id=?,status=?,rejection_reason=NULL WHERE id=? AND status IN (?,?,?) AND COALESCE(receipt_id,?)=? AND EXISTS(SELECT 1 FROM rr_receipts WHERE id=?)').bind(receiptId,'review',id,'pending','review','rejected','',order.receipt_id||'',receiptId)
-   ]);if(r[0].meta.changes!==1||r[1].meta.changes!==1)fail(409,'รายการเปลี่ยนแล้ว กรุณาโหลดใหม่')}catch(e){await env.FILES.delete(key);if(e instanceof HttpError)throw e;fail(409,'หลักฐานซ้ำหรือรายการเปลี่ยนแล้ว')}
+   ]);if(r[0].meta.changes!==1||r[1].meta.changes!==1)fail(409,'รายการเปลี่ยนแล้ว กรุณาโหลดใหม่')}catch(e){await files(env).delete(key);if(e instanceof HttpError)throw e;fail(409,'หลักฐานซ้ำหรือรายการเปลี่ยนแล้ว')}
    return json({ok:true,status:'review'});
   }
   if(action==='downloads'&&method==='POST') {
+   const delivery=await orderView(env,order,await orderItems(env,id));if(delivery.deliveryMode==='manual')fail(409,'ร้านจะส่งไฟล์ให้ตามช่องทางที่ระบุในคำสั่งซื้อ');
    await limit(request,env,'download',30);if(order.status!=='paid')fail(403,'ดาวน์โหลดได้หลังร้านยืนยันเงินเข้าเท่านั้น');const b=await bodyJson(request);
    if(typeof b.productId!=='string'||!validId(b.productId))fail(400,'รหัสสินค้าไม่ถูกต้อง');const item=await env.DB.prepare('SELECT * FROM rr_order_items WHERE order_id=? AND product_id=?').bind(id,b.productId).first();if(!item)fail(404,'ไม่พบสินค้าในคำสั่งซื้อ');if(!await env.FILES.head(item.original_key))fail(503,'ไฟล์ยังไม่พร้อม กรุณาติดต่อร้าน');
    const token=randomToken(),expiresAt=now()+5*60000;await env.DB.prepare('INSERT INTO rr_download_tokens(token_hash,order_id,product_id,owner_hash,expires_at) VALUES (?,?,?,?,?)').bind(await hash(token),id,item.product_id,order.owner_hash,expiresAt).run();

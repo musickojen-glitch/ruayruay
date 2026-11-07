@@ -1,21 +1,9 @@
-# RUAYRUAY — payment implementation status (2026-11-08)
+# RUAYRUAY — manual fulfillment QA 2026-11-08
 
-## Implemented
-Server-backed manual-payment flow, customer order page, authenticated admin review, private receipt/original uploads, server-authoritative 9 THB pricing, D1 idempotency and unique bank transaction reference, and owner-bound one-use downloads. Preserves established storefront and 46 real previews. Old simulated slip approval removed.
+Owner chose to send files manually after R2 signup requested a card. Default DELIVERY_MODE is manual. No R2/FILES binding required; originals stay in Drive.
 
-## Verified locally
-13 automated integration scenarios passed using actual SQL through SQLite and an in-memory R2 adapter. Includes server price, order retry, CSRF, unauthorized access, receipt/transaction duplication, pending approval, invalid amount/recipient/bank confirmation, stale receipt, private downloads, single-use/expiry/refund revocation, authentication rate limit, original snapshot, closed public checkout with private owner test, size limits and invalid requests. All JS syntax checks passed. Browser verified the deployed storefront → cart → checkout route, 9.00 THB total, closed payment state, and disabled QR action when bindings are absent.
+Implemented: private required email/LINE ID, server price and idempotent order, private small QR/receipt files in D1, browser image resize, existing bank review and duplicate reference protection, payment and delivery statuses, explicit owner sent confirmation. Manual orders never issue automatic download links. No outbound messages are sent.
 
-These tests do not prove production D1/R2/QR/bank readiness. No real money was transferred during testing. No customer data or banking credentials used.
+15 integration tests use real SQL in SQLite plus mock R2 for the legacy automatic path. Covers price, retry, authorization, CSRF, duplicate receipts/references, stale evidence, expiry/refund, login rate limit, no-R2 D1 file readback, private contact, valid email/LINE, paid-before-fulfill, explicit sent confirmation and manual download rejection. All JS syntax checks pass. These are local tests, not confirmation of production bank integration.
 
-## Release gates
-- Cloudflare sign-in is needed to create/bind DB and private FILES storage, run migrations and configure secrets.
-- Import the owner's QR and all 46 originals through admin. Do not commit these originals to the public repository.
-- Verify browser/mobile layout and production integration, recipient scan and actual manual bank confirmation/download.
-- LIVE_CHECKOUT_ENABLED remains false/unset and persisted checkout_enabled=false until owner test passes. Owner-only test mode requires both an admin session and a separate 30-minute test cookie; it does not open public checkout.
-- Existing product cultural citation review remains pending.
-
-See PAYMENT_SETUP_TH.md for exact setup and limitations. Use migrations/ for D1; legacy schema.sql is PostgreSQL and is not the active schema.
-
-## Current external blocker
-Cloudflare Google sign-in using the selected saved account returned “Unable to sign in. Try again or use your email and password.” No bindings or secrets were changed. No money received/transferred and no private originals/QR published. Checkout remains fail-closed. Authentication must be restored before provisioning and production integration tests.
+User screenshots confirm D1 ruayruay-orders created, initial schema executed, product_count=46 and DB binding saved in Production. R2 not activated. Add migration 0003, two secrets, and QR before owner-only testing. Keep LIVE_CHECKOUT_ENABLED false/unset and checkout_enabled=false until integration and actual owner bank verification/file sending are tested. Product cultural citation review remains pending.
