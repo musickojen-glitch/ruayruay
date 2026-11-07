@@ -1,0 +1,467 @@
+{
+  "currency": "THB",
+  "salesEnabled": false,
+  "verification": "owner_manual",
+  "products": [
+    {
+      "id": "RR-001",
+      "name": "ต้นไม้ทองคำแห่งโชคลาภ",
+      "category": "เงินทองและโชคลาภ",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-002",
+      "name": "เจ้าแม่กวนอิมประทานพร",
+      "category": "พระและเทพมงคล",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-003",
+      "name": "สวนเมเปิลแห่งความสงบ",
+      "category": "ธรรมชาติและดอกไม้",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-004",
+      "name": "ช้างมงคลนำโชค",
+      "category": "สัตว์มงคล",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-005",
+      "name": "สะพานบุปผาแห่งความสุข",
+      "category": "ธรรมชาติและดอกไม้",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-006",
+      "name": "อาชามงคลสามสี",
+      "category": "สัตว์มงคล",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-007",
+      "name": "พระพุทธองค์แสงทอง",
+      "category": "พระและเทพมงคล",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-008",
+      "name": "พระยิ้มทองคำแห่งความมั่งคั่ง",
+      "category": "พระและเทพมงคล",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-009",
+      "name": "จันทราสีม่วงเหนือสายน้ำ",
+      "category": "ธรรมชาติและดอกไม้",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-010",
+      "name": "ปลาคาร์ปทองทะยานทรัพย์",
+      "category": "สัตว์มงคล",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-011",
+      "name": "คางคกทองเรียกเงิน",
+      "category": "สัตว์มงคล",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-012",
+      "name": "จันทราแห่งโชคลาภ",
+      "category": "ธรรมชาติและดอกไม้",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-013",
+      "name": "มังกรเพลิงทอง",
+      "category": "สัตว์มงคล",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-014",
+      "name": "มังกรทองทะยานฟ้า",
+      "category": "สัตว์มงคล",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-015",
+      "name": "มรกตเรียกทรัพย์",
+      "category": "เงินทองและโชคลาภ",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-016",
+      "name": "เรือสำเภาทองเรียกทรัพย์",
+      "category": "เงินทองและโชคลาภ",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-017",
+      "name": "ต้นไม้ทองคำเรียกทรัพย์",
+      "category": "เงินทองและโชคลาภ",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-018",
+      "name": "พระสังกัจจายน์ทองคำประทานทรัพย์",
+      "category": "พระและเทพมงคล",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-019",
+      "name": "แสงธรรมเปิดทางชีวิต",
+      "category": "พระและเทพมงคล",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-020",
+      "name": "คู่ปักษาเคียงฝัน",
+      "category": "สัตว์มงคล",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-021",
+      "name": "ครอบครัวช้างแห่งความสุข",
+      "category": "สัตว์มงคล",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-022",
+      "name": "มังกรทองไข่มุกแห่งความหวัง",
+      "category": "สัตว์มงคล",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-023",
+      "name": "กวางคู่เคียงทางแห่งความหวัง",
+      "category": "สัตว์มงคล",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-024",
+      "name": "พยัคฆ์ผู้พิทักษ์ดวงใจ",
+      "category": "สัตว์มงคล",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-025",
+      "name": "พุทธบารมีแห่งรุ่งอรุณ",
+      "category": "พระและเทพมงคล",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-D1-01",
+      "name": "วันอาทิตย์_ครุฑสุริยันแห่งความกล้าหาญ",
+      "category": "มงคลประจำวันเกิด",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-D1-02",
+      "name": "วันอาทิตย์_ราชสีห์สุริยันแห่งความมั่นใจ",
+      "category": "มงคลประจำวันเกิด",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-D1-03",
+      "name": "วันอาทิตย์_แสงธรรมสุริยันแห่งความหวัง",
+      "category": "มงคลประจำวันเกิด",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-D3-01",
+      "name": "วันอังคาร_บัวชมพูแห่งความหวัง",
+      "category": "มงคลประจำวันเกิด",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-D3-02",
+      "name": "วันอังคาร_แสงใจไม่ยอมแพ้",
+      "category": "มงคลประจำวันเกิด",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-D3-03",
+      "name": "วันอังคาร_ศรัทธาพาใจเบ่งบาน",
+      "category": "มงคลประจำวันเกิด",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-D4-01",
+      "name": "วันพุธ_พฤกษามรกตแห่งการเติบโต",
+      "category": "มงคลประจำวันเกิด",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-D4-02",
+      "name": "วันพุธ_สายน้ำแห่งโอกาส",
+      "category": "มงคลประจำวันเกิด",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-D4-03",
+      "name": "วันพุธ_นาคามรกตแห่งความมั่นคง",
+      "category": "มงคลประจำวันเกิด",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-D5-01",
+      "name": "วันพฤหัสบดี_แสงปัญญานำทาง",
+      "category": "มงคลประจำวันเกิด",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-D5-02",
+      "name": "วันพฤหัสบดี_เส้นทางแห่งปัญญา",
+      "category": "มงคลประจำวันเกิด",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-D5-03",
+      "name": "วันพฤหัสบดี_รุ่งอรุณแห่งความเพียร",
+      "category": "มงคลประจำวันเกิด",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-D6-01",
+      "name": "วันศุกร์_ทะเลครามแห่งความสุข",
+      "category": "มงคลประจำวันเกิด",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-D6-02",
+      "name": "วันศุกร์_ลักษมีบุปผาแห่งความรัก",
+      "category": "มงคลประจำวันเกิด",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-D6-03",
+      "name": "วันศุกร์_จันทราแห่งรักและความหวัง",
+      "category": "มงคลประจำวันเกิด",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-D7-01",
+      "name": "วันเสาร์_ผู้พิทักษ์แห่งความกล้าหาญ",
+      "category": "มงคลประจำวันเกิด",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-D7-02",
+      "name": "วันเสาร์_จันทราแห่งใจมั่นคง",
+      "category": "มงคลประจำวันเกิด",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-D7-03",
+      "name": "วันเสาร์_นาคาม่วงแห่งความเพียร",
+      "category": "มงคลประจำวันเกิด",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-D8-01",
+      "name": "พุธกลางคืน_ราหูแห่งการเปลี่ยนผ่าน",
+      "category": "มงคลประจำวันเกิด",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-D8-02",
+      "name": "พุธกลางคืน_ราหูแห่งสติและการเริ่มใหม่",
+      "category": "มงคลประจำวันเกิด",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    },
+    {
+      "id": "RR-D8-03",
+      "name": "พุธกลางคืน_พลังใจเหนือเงาราหู",
+      "category": "มงคลประจำวันเกิด",
+      "priceTHB": 9,
+      "width": 2160,
+      "height": 3840,
+      "deliveryEnabled": false,
+      "previewReady": false
+    }
+  ]
+}
