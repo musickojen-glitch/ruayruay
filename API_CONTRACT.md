@@ -10,4 +10,4 @@ POST /api/orders/:id/payment-evidence accepts a receipt for manual review; it MU
 POST /api/admin/orders/:id/approve requires admin authentication and an independent verification of incoming bank funds, amount, recipient and duplicate transaction reference.
 GET /api/orders/:id/downloads requires authenticated order ownership or a securely signed one-time token; only paid orders receive expiring private file links.
 ## Security and release gates
-Use private object storage for originals, watermarked compressed previews in public storage, server-side authentication, rate limits, payment idempotency, audit logs, and signed time-limited download URLs. Never trust browser payment status or a screenshot alone. Do not enable real QR checkout or automatic fulfillment until integration tests pass.
+Use private object storage for originals, unwatermarked reduced-resolution compressed previews in public storage, server-side authentication, rate limits, payment idempotency, audit logs, and signed time-limited download URLs. Never trust browser payment status or a screenshot alone. Do not enable real QR checkout or automatic fulfillment until integration tests pass.
