@@ -79,6 +79,7 @@ function safeOrder(order,items) { return {id:order.id,isTest:!!order.is_test,tot
 async function orderView(env,order,items) {
  const result=safeOrder(order,items);result.deliveryMode=items.every(x=>x.original_key==='manual')?'manual':'automatic';
  if(result.deliveryMode==='manual'){result.contact=await env.DB.prepare('SELECT method,value FROM rr_contacts WHERE order_id=?').bind(order.id).first();result.fulfillment=await env.DB.prepare('SELECT sent_at AS sentAt,note FROM rr_fulfillments WHERE order_id=?').bind(order.id).first()}
+ if(result.deliveryMode==='manual'&&order.status==='paid')result.driveLinks=(await env.DB.prepare('SELECT product_id AS productId,url FROM rr_drive_deliveries WHERE order_id=? ORDER BY product_id').bind(order.id).all()).results;
  return result;
 }
 function contactDetails(b) {
@@ -108,6 +109,7 @@ async function dispatch(request,env,headers) {
   await admin(request,env);await limit(request,env,'admin',120);
   if(path==='admin/logout'&&method==='POST'){headers.push(sessionHeader('admin','',0),sessionHeader('test','',0));return json({ok:true})}
   if(path==='admin/test-checkout'&&method==='POST'){const b=await bodyJson(request);headers.push(sessionHeader('test',b.enabled?await signedCookie(env,'test','owner',1800):'',b.enabled?1800:0));return json({ok:true})}
+  if(path==='admin/delivery-setup'&&method==='POST'){await env.DB.batch([env.DB.prepare("CREATE TABLE IF NOT EXISTS rr_contacts (\n order_id TEXT PRIMARY KEY REFERENCES rr_orders(id),\n method TEXT NOT NULL CHECK(method IN ('email','line')),\n value TEXT NOT NULL\n)"),env.DB.prepare("CREATE TABLE IF NOT EXISTS rr_fulfillments (\n order_id TEXT PRIMARY KEY REFERENCES rr_orders(id),\n sent_at INTEGER NOT NULL,\n note TEXT NOT NULL DEFAULT ''\n)"),env.DB.prepare("CREATE TABLE IF NOT EXISTS rr_small_files (\n key TEXT PRIMARY KEY,\n mime TEXT NOT NULL,\n size_bytes INTEGER NOT NULL CHECK(size_bytes <= 921600),\n data BLOB NOT NULL\n)"),env.DB.prepare("CREATE TABLE IF NOT EXISTS rr_drive_deliveries (\n order_id TEXT NOT NULL REFERENCES rr_orders(id),\n product_id TEXT NOT NULL,\n url TEXT NOT NULL,\n created_at INTEGER NOT NULL,\n PRIMARY KEY(order_id,product_id),\n FOREIGN KEY(order_id,product_id) REFERENCES rr_order_items(order_id,product_id)\n)")]);return json({ok:true})}
   if(path==='admin/status'&&method==='GET') {const l=await live(env);const rows=await env.DB.prepare('SELECT id,title,price_satang,ready FROM rr_products ORDER BY id').all();return json({enabled:l.enabled,deliveryMode:manualDelivery(env)?'manual':'automatic',environmentAllowsLive:env.LIVE_CHECKOUT_ENABLED==='true',hasQr:!!l.settings.payment_qr_key,recipient:l.settings.payment_recipient,products:rows.results})}
   if(path==='admin/orders'&&method==='GET') {
    const status=url.searchParams.get('status')||'review';if(!['review','pending','paid','rejected','refunded'].includes(status))fail(400,'สถานะไม่ถูกต้อง');
@@ -131,10 +133,31 @@ async function dispatch(request,env,headers) {
    if(b.enabled){if(env.LIVE_CHECKOUT_ENABLED!=='true')fail(409,'ต้องผ่านการทดสอบและเปิด LIVE_CHECKOUT_ENABLED ในการตั้งค่าก่อน');if(!s.payment_qr_key||b.qrRecipientVerified!==true||b.fulfillmentTested!==true)fail(409,'ต้องตรวจชื่อผู้รับ QR และทดสอบส่งไฟล์ก่อน');const count=await env.DB.prepare('SELECT COUNT(*) AS n FROM rr_products'+(manualDelivery(env)?'':' WHERE ready=1')).first();if(!count.n)fail(409,'ยังไม่มีสินค้าพร้อมส่ง');}
    await env.DB.prepare('UPDATE rr_settings SET value=? WHERE key=?').bind(String(b.enabled),'checkout_enabled').run();await audit(env,'checkout_'+(b.enabled?'enabled':'disabled'),null);return json({ok:true,enabled:b.enabled});
   }
-  const match=path.match(/^admin\/orders\/([a-f0-9-]+)(?:\/(receipt|approve|reject|refund|fulfill))?$/);
+  const match=path.match(/^admin\/orders\/([a-f0-9-]+)(?:\/(receipt|approve|reject|refund|fulfill|drive-links))?$/);
   if(match) {
    const [,id,action]=match;const order=await env.DB.prepare('SELECT * FROM rr_orders WHERE id=?').bind(id).first();if(!order)fail(404,'ไม่พบคำสั่งซื้อ');
    if(!action&&method==='GET'){const payment=await env.DB.prepare('SELECT transaction_ref,amount_satang,transferred_at,approved_at FROM rr_payments WHERE order_id=?').bind(id).first();return json({...await orderView(env,order,await orderItems(env,id)),receiptId:order.receipt_id,payment})}
+   if(action==='drive-links'&&method==='POST') {
+    if(order.status!=='paid')fail(409,'ยืนยันเงินเข้าก่อนเปิดลิงก์ดาวน์โหลด');
+    const b=await bodyJson(request),items=await orderItems(env,id);
+    if(!items.every(x=>x.original_key==='manual'))fail(409,'รายการนี้ไม่ใช่การส่งจาก Drive');
+    const contact=await env.DB.prepare('SELECT method,value FROM rr_contacts WHERE order_id=?').bind(id).first();
+    if(!contact||contact.method!=='email')fail(409,'การแชร์ Drive แบบจำกัดสิทธิ์ต้องใช้อีเมลลูกค้า');
+    if(b.recipientEmail!==contact.value||b.restrictedSharingConfirmed!==true)fail(400,'ยืนยันแชร์เฉพาะไฟล์ให้ตรงอีเมลลูกค้า ห้ามแชร์โฟลเดอร์รวม');
+    if(!Array.isArray(b.links)||b.links.length!==items.length)fail(400,'ต้องระบุลิงก์ครบเฉพาะภาพที่ซื้อ');
+    const seen=new Set(),files=new Set(),links=[];
+    for(const link of b.links){
+     if(!link||typeof link.productId!=='string'||seen.has(link.productId)||!items.some(x=>x.product_id===link.productId))fail(400,'รหัสภาพซ้ำหรือไม่อยู่ในคำสั่งซื้อ');
+     let u;try{u=new URL(link.url)}catch{fail(400,'ลิงก์ Google Drive ไม่ถูกต้อง')}
+     const m=u.pathname.match(/^\/file\/d\/([A-Za-z0-9_-]{10,200})(?:\/(?:view|preview))?\/?$/);
+     if(u.protocol!=='https:'||u.hostname!=='drive.google.com'||u.port||u.username||u.password||!m)fail(400,'ใช้ลิงก์รายไฟล์ https://drive.google.com/file/d/.../view เท่านั้น');
+     if(files.has(m[1]))fail(400,'แต่ละภาพต้องใช้ไฟล์ต้นฉบับคนละไฟล์');
+     const resourceKey=u.searchParams.get('resourcekey');if(resourceKey&&!/^[A-Za-z0-9_-]{1,200}$/.test(resourceKey))fail(400,'resourcekey ไม่ถูกต้อง');
+     const url='https://drive.google.com/file/d/'+m[1]+'/view'+(resourceKey?'?resourcekey='+resourceKey:'');seen.add(link.productId);files.add(m[1]);links.push({productId:link.productId,url});
+    }
+    await env.DB.batch([...links.map(l=>env.DB.prepare('INSERT INTO rr_drive_deliveries(order_id,product_id,url,created_at) SELECT ?,?,?,? WHERE EXISTS(SELECT 1 FROM rr_orders WHERE id=? AND status=?) ON CONFLICT(order_id,product_id) DO UPDATE SET url=excluded.url,created_at=excluded.created_at').bind(id,l.productId,l.url,now(),id,'paid')),env.DB.prepare('INSERT INTO rr_audit(id,action,order_id,detail,created_at) VALUES (?,?,?,?,?)').bind(uid(),'drive_links_published',id,'owner confirmed restricted sharing to order email',now())]);
+    return json({ok:true,count:links.length});
+   }
    if(action==='fulfill'&&method==='POST') {
     const b=await bodyJson(request);if(order.status!=='paid')fail(409,'ต้องตรวจเงินเข้าก่อนบันทึกส่งไฟล์');if(b.sentConfirmed!==true||typeof b.note!=='string'||b.note.trim().length<3||b.note.length>300)fail(400,'ระบุช่องทางส่งและยืนยันว่าได้ส่งไฟล์แล้ว');
     const contact=await env.DB.prepare('SELECT method,value FROM rr_contacts WHERE order_id=?').bind(id).first();if(!contact)fail(409,'รายการนี้ไม่ใช่การส่งเอง');

@@ -6,7 +6,7 @@ import { onRequest } from '../functions/api/[[path]].js';
 
 // SQLite adapter exercises the actual SQL used against D1, including transaction rollback.
 class DB {
- constructor(){this.sql=new DatabaseSync(':memory:');this.sql.exec(readFileSync(new URL('../migrations/0001_commerce.sql',import.meta.url),'utf8'));this.sql.exec(readFileSync(new URL('../migrations/0003_manual_delivery.sql',import.meta.url),'utf8'));}
+ constructor(){this.sql=new DatabaseSync(':memory:');this.sql.exec(readFileSync(new URL('../migrations/0001_commerce.sql',import.meta.url),'utf8'));this.sql.exec(readFileSync(new URL('../migrations/0003_manual_delivery.sql',import.meta.url),'utf8'));this.sql.exec(readFileSync(new URL('../migrations/0004_drive_delivery.sql',import.meta.url),'utf8'));}
  prepare(sql){const db=this;return {values:[],bind(...values){this.values=values.map(v=>v instanceof ArrayBuffer?new Uint8Array(v):v);return this},async first(){return db.sql.prepare(sql).get(...this.values)||null},async all(){return {results:db.sql.prepare(sql).all(...this.values)}},async run(){const r=db.sql.prepare(sql).run(...this.values);return {meta:{changes:Number(r.changes)}}}}}
  async batch(statements){this.sql.exec('BEGIN');try{const result=[];for(const st of statements)result.push(await st.run());this.sql.exec('COMMIT');return result}catch(e){this.sql.exec('ROLLBACK');throw e}}
 }
@@ -156,4 +156,27 @@ test('manual delivery rejects missing or invalid contact and large receipts; acc
  assert.equal((await s.receipt(order,new Uint8Array(900*1024+1))).status,413);
  assert.equal((await s.staff.call('admin/products/RR-001/original',{method:'PUT',body:image()})).status,409);
  assert.equal((await s.staff.call('admin/settings',{method:'POST',json:{enabled:true,qrRecipientVerified:true,fulfillmentTested:true}})).status,200);
+});
+
+test('Drive delivery exposes only paid owned items and rejects folder links, extra products and mismatched recipients',async()=>{
+ const s=await setup();delete s.env.FILES;s.env.DELIVERY_MODE='manual';await s.staff.call('admin/payment-qr',{method:'PUT',body:image(61)});
+ const r=await s.owner.call('orders',{method:'POST',json:{productIds:['RR-001'],requestId:crypto.randomUUID(),contact:{method:'email',value:'buyer@example.com'}}});const o=r.data;
+ const payload={recipientEmail:'buyer@example.com',restrictedSharingConfirmed:true,links:[{productId:'RR-001',url:'https://drive.google.com/file/d/EXAMPLE_FILE_ID_001/view?usp=sharing'}]};const route='admin/orders/'+o.id+'/drive-links';
+ assert.equal((await s.staff.call(route,{method:'POST',json:payload})).status,409);
+ await s.receipt(o,image(62));await s.approve(o,'DRIVE-BANK-001');
+ assert.equal((await s.owner.call(route,{method:'POST',json:payload})).status,401);
+ for(const bad of [{...payload,recipientEmail:'other@example.com'},{...payload,restrictedSharingConfirmed:false},{...payload,links:[]},{...payload,links:[{productId:'RR-002',url:payload.links[0].url}]},{...payload,links:[{productId:'RR-001',url:'https://drive.google.com/drive/folders/EXAMPLE_FOLDER'}]},{...payload,links:[{productId:'RR-001',url:'https://drive.google.com.evil.example/file/d/EXAMPLE_FILE_ID_001/view'}]}])assert.equal((await s.staff.call(route,{method:'POST',json:bad})).status,400);
+ assert.equal((await s.staff.call(route,{method:'POST',json:payload})).status,200);
+ const view=(await s.owner.call('orders/'+o.id)).data;assert.deepEqual(view.driveLinks,[{productId:'RR-001',url:'https://drive.google.com/file/d/EXAMPLE_FILE_ID_001/view'}]);
+ assert.equal((await s.client().call('orders/'+o.id)).status,401);
+ const other=await s.owner.call('orders',{method:'POST',json:{productIds:['RR-002'],requestId:crypto.randomUUID(),contact:{method:'email',value:'buyer@example.com'}}});assert.equal(other.data.driveLinks,undefined);
+ await s.staff.call('admin/orders/'+o.id+'/refund',{method:'POST',json:{refundCompleted:true}});assert.equal((await s.owner.call('orders/'+o.id)).data.driveLinks,undefined);assert.equal((await s.staff.call(route,{method:'POST',json:payload})).status,409);
+});
+
+test('delivery schema setup requires authenticated admin and is idempotent',async()=>{
+ const s=await setup();s.env.DB.sql.exec('DROP TABLE rr_drive_deliveries');
+ assert.equal((await s.owner.call('admin/delivery-setup',{method:'POST',json:{}})).status,401);
+ assert.equal((await s.staff.call('admin/delivery-setup',{method:'POST',json:{}})).status,200);
+ assert.equal((await s.staff.call('admin/delivery-setup',{method:'POST',json:{}})).status,200);
+ assert.equal(s.env.DB.sql.prepare('SELECT COUNT(*) AS n FROM rr_drive_deliveries').get().n,0);
 });
