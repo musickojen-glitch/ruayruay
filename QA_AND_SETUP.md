@@ -1,26 +1,18 @@
-# รวยรวย — สถานะรุ่นทดสอบ
+# RUAYRUAY — payment implementation status (2026-11-08)
 
-ยังไม่เปิดรับเงินหรือส่งมอบไฟล์ต้นฉบับ
+## Implemented
+Server-backed manual-payment flow, customer order page, authenticated admin review, private receipt/original uploads, server-authoritative 9 THB pricing, D1 idempotency and unique bank transaction reference, and owner-bound one-use downloads. Preserves established storefront and 46 real previews. Old simulated slip approval removed.
 
-## เปลี่ยนแปลง
-- รักษาหน้าเดิมและแบนเนอร์เดิม เพิ่มภาพพรีวิว 8 ภาพจาก RUAYRUAY_WEB_PREVIEW_V1
-- ป้องกันเพิ่มภาพดิจิทัลซ้ำและรหัสสินค้าที่ไม่มีจริง
-- รองรับข้อมูลตะกร้าเสียและการปิด localStorage
-- แสดงยอดทดสอบ 19 บาทต่อภาพและปิดสั่งซื้อเมื่อตะกร้าว่าง
-- จำลองคำสั่งซื้อและการตรวจสลิป ไม่มีการตรวจธุรกรรมจริง
-- ดาวน์โหลดได้เฉพาะใบสั่งซื้อทดสอบ JSON ไม่มีไฟล์สินค้าจริง
+## Verified locally
+13 automated integration scenarios passed using actual SQL through SQLite and an in-memory R2 adapter. Includes server price, order retry, CSRF, unauthorized access, receipt/transaction duplication, pending approval, invalid amount/recipient/bank confirmation, stale receipt, private downloads, single-use/expiry/refund revocation, authentication rate limit, original snapshot, closed public checkout with private owner test, size limits and invalid requests. All JS syntax checks passed.
 
-## ตรวจแล้ว
-Node syntax check และทดสอบ logic ผ่าน: storage เสีย/ถูกปิด, สินค้าซ้ำ/ไม่พบ, รวมราคา, ตะกร้าว่าง, ยอดผิด, ผู้รับผิด, สลิปซ้ำ, บริการตรวจไม่ได้, ผ่านแบบจำลอง, ค้นหาไม่พบ
-ยังไม่ได้ทดสอบบนเบราว์เซอร์ มือถือ หรือธุรกรรมจริง
+These tests do not prove production D1/R2/QR/bank readiness. No real money was transferred during testing. No customer data or banking credentials used.
 
-## ต้องทำก่อนเปิดขาย
-1. ไฟล์ต้นฉบับสินค้าที่มีสิทธิจำหน่าย ความละเอียดจริง ราคาและแพ็กเกจที่ยืนยันแล้ว ภาพปัจจุบันเป็นพรีวิวความละเอียดต่ำ
-2. Server API และฐานข้อมูลคำสั่งซื้อ คำนวณราคาที่เซิร์ฟเวอร์ ไม่เชื่อถือยอดจากเบราว์เซอร์
-3. บริการตรวจธุรกรรม/สลิปและ credentials ใน server secrets ตรวจผู้รับ ยอด สถานะ และ unique transaction ID แบบ atomic พร้อม rate limit
-4. QR ที่ตรวจยืนยันผู้รับแล้ว แสดงเมื่อระบบพร้อมเท่านั้น
-5. เก็บต้นฉบับในพื้นที่ private และสร้างลิงก์ดาวน์โหลดหมดอายุหลังยืนยันเงินจริง สิทธิ์ดาวน์โหลดต้องตรวจที่เซิร์ฟเวอร์
-6. ระบบผู้ดูแล ประวัติรายการ คืนเงิน ติดต่อร้าน และนโยบายการใช้งาน/ข้อมูลส่วนบุคคล
-7. ทดสอบ end-to-end รวมสลิปปลอม สลิปซ้ำพร้อมกัน ยอดผิด ผู้รับผิด ระบบล่ม การยืนยันซ้ำ ลิงก์หมดอายุ และการเข้าถึงไฟล์โดยไม่ชำระเงิน
+## Release gates
+- Cloudflare sign-in is needed to create/bind DB and private FILES storage, run migrations and configure secrets.
+- Import the owner's QR and all 46 originals through admin. Do not commit these originals to the public repository.
+- Verify browser/mobile layout and production integration, recipient scan and actual manual bank confirmation/download.
+- LIVE_CHECKOUT_ENABLED remains false/unset and persisted checkout_enabled=false until owner test passes. Owner-only test mode requires both an admin session and a separate 30-minute test cookie; it does not open public checkout.
+- Existing product cultural citation review remains pending.
 
-ห้ามถือว่าการจำลองที่ผ่านเป็นหลักฐานว่าการชำระเงินจริงหรือส่งมอบสินค้าผ่านแล้ว
+See PAYMENT_SETUP_TH.md for exact setup and limitations. Use migrations/ for D1; legacy schema.sql is PostgreSQL and is not the active schema.

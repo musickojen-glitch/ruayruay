@@ -1,13 +1,28 @@
-# RUAYRUAY — API contract (implementation pending)
-This document defines the production backend interface; endpoints are NOT implemented by this file.
-## Catalog
-GET /api/products?cursor=...&category=... returns only status=ready products, paginated. No private_original_key is returned.
-POST /api/admin/products requires server-verified admin authorization and accepts title, category, hook, description, citations, preview upload and private original upload. Default status=draft.
-PATCH /api/admin/products/:id allows publishing only after asset, copyright and citation review.
-## Orders
-POST /api/orders accepts product IDs; server calculates authoritative price (9 THB each by default), persists pending order, and returns order ID and amount.
-POST /api/orders/:id/payment-evidence accepts a receipt for manual review; it MUST NOT set paid automatically.
-POST /api/admin/orders/:id/approve requires admin authentication and an independent verification of incoming bank funds, amount, recipient and duplicate transaction reference.
-GET /api/orders/:id/downloads requires authenticated order ownership or a securely signed one-time token; only paid orders receive expiring private file links.
-## Security and release gates
-Use private object storage for originals, unwatermarked reduced-resolution compressed previews in public storage, server-side authentication, rate limits, payment idempotency, audit logs, and signed time-limited download URLs. Never trust browser payment status or a screenshot alone. Do not enable real QR checkout or automatic fulfillment until integration tests pass.
+# RUAYRUAY payment API — implemented, setup gated
+
+The Pages Function `functions/api/[[path]].js` implements these routes. Runtime bindings: private R2 `FILES`, D1 `DB`, secrets `ADMIN_SECRET`, `SESSION_SECRET`, and explicit gate `LIVE_CHECKOUT_ENABLED`. The persisted `checkout_enabled` flag also must be true. Both gates default closed. No secret or full-resolution original is committed.
+
+Customer:
+- GET /api/config — public checkout availability; no QR before enabled
+- POST /api/orders — productIds and requestId; server-calculated price and idempotent durable order
+- GET /api/orders/:id — requires owning signed guest cookie
+- GET /api/orders/:id/qr — private QR, authenticated order, live and unexpired unpaid order only
+- POST /api/orders/:id/receipt — raw JPG/PNG <=5 MB; status changes to review only
+- POST /api/orders/:id/downloads — productId; paid order issues 5-minute, one-use link
+- GET /api/downloads/:token — requires matching owning guest cookie; atomic consume; paid status rechecked
+
+Admin (signed HttpOnly 8-hour cookie after password login):
+- POST /api/admin/login, POST /api/admin/logout
+- GET /api/admin/status
+- GET /api/admin/orders?status=review (bounded to 100; other documented statuses supported)
+- GET /api/admin/orders/:id, GET /api/admin/orders/:id/receipt
+- POST /api/admin/orders/:id/approve — current receiptId, bankConfirmed, recipientConfirmed, amountSatang, transferredAt, transactionRef; durable unique bank reference and atomic approval
+- POST /api/admin/orders/:id/reject — current receiptId and reason
+- POST /api/admin/orders/:id/refund — records an already-completed external refund and revokes downloads; does not move money
+- PUT /api/admin/products/:id/original — private JPG 2160×3840, maximum 20 MB
+- PUT /api/admin/payment-qr — private JPG/PNG <=3 MB; GET same path previews for admin
+- POST /api/admin/settings — explicit enable/disable; enabling requires deployment gate and owner's QR/fulfillment confirmations
+
+Mutations require exact Origin match. Cookies: Secure, HttpOnly, SameSite=Strict, __Host prefix. API responses are private/no-store, nosniff, no-referrer. No CORS is enabled. Rate limiting uses hashed IP/window keys. Customer-visible data excludes receipt keys, original keys and secrets. Original snapshots preserve already-purchased files. Payment-receipt images never auto-approve an order.
+
+See PAYMENT_SETUP_TH.md for configuration, release gates and limits. Full integration and actual bank confirmation remain required before live checkout.
