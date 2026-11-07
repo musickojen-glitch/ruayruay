@@ -13,6 +13,7 @@ Customer:
 
 Admin (signed HttpOnly 8-hour cookie after password login):
 - POST /api/admin/login, POST /api/admin/logout
+- POST /api/admin/test-checkout — starts/ends a 30-minute owner-only test cookie; requires admin and never opens public checkout
 - GET /api/admin/status
 - GET /api/admin/orders?status=review (bounded to 100; other documented statuses supported)
 - GET /api/admin/orders/:id, GET /api/admin/orders/:id/receipt

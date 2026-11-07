@@ -4,7 +4,7 @@
 Server-backed manual-payment flow, customer order page, authenticated admin review, private receipt/original uploads, server-authoritative 9 THB pricing, D1 idempotency and unique bank transaction reference, and owner-bound one-use downloads. Preserves established storefront and 46 real previews. Old simulated slip approval removed.
 
 ## Verified locally
-13 automated integration scenarios passed using actual SQL through SQLite and an in-memory R2 adapter. Includes server price, order retry, CSRF, unauthorized access, receipt/transaction duplication, pending approval, invalid amount/recipient/bank confirmation, stale receipt, private downloads, single-use/expiry/refund revocation, authentication rate limit, original snapshot, closed public checkout with private owner test, size limits and invalid requests. All JS syntax checks passed.
+13 automated integration scenarios passed using actual SQL through SQLite and an in-memory R2 adapter. Includes server price, order retry, CSRF, unauthorized access, receipt/transaction duplication, pending approval, invalid amount/recipient/bank confirmation, stale receipt, private downloads, single-use/expiry/refund revocation, authentication rate limit, original snapshot, closed public checkout with private owner test, size limits and invalid requests. All JS syntax checks passed. Browser verified the deployed storefront → cart → checkout route, 9.00 THB total, closed payment state, and disabled QR action when bindings are absent.
 
 These tests do not prove production D1/R2/QR/bank readiness. No real money was transferred during testing. No customer data or banking credentials used.
 
