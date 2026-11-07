@@ -16,3 +16,6 @@ These tests do not prove production D1/R2/QR/bank readiness. No real money was t
 - Existing product cultural citation review remains pending.
 
 See PAYMENT_SETUP_TH.md for exact setup and limitations. Use migrations/ for D1; legacy schema.sql is PostgreSQL and is not the active schema.
+
+## Current external blocker
+Cloudflare Google sign-in using the selected saved account returned “Unable to sign in. Try again or use your email and password.” No bindings or secrets were changed. No money received/transferred and no private originals/QR published. Checkout remains fail-closed. Authentication must be restored before provisioning and production integration tests.
